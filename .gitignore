@@ -1,0 +1,21 @@
+.venv/
+conda_envs/
+__pycache__/
+*.pyc
+.DS_Store
+
+# data / outputs (adjust if you want some tracked)
+data/
+datasets/
+results/
+outputs/
+replications/
+figs/
+figures/
+
+# common large artifacts
+*.npy
+*.npz
+*.pkl
+*.h5
+*.ckpt
