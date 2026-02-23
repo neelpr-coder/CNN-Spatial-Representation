@@ -1510,7 +1510,7 @@ if __name__ == '__main__':
                         all_feature_selections.append(feature_selections)
     # =================================================================== #
 
-    '''_single_env_decoding_error(
+    _single_env_decoding_error(
         config_version="env17_r24_2d_vgg16_block2_pool", 
         moving_trajectory="uniform",
         sampling_rate="0.3",
@@ -1520,7 +1520,7 @@ if __name__ == '__main__':
         random_seed=42,
         override_results=False,
         fresh_start=True
-    )'''
+    )
 
     '''multi_envs_across_dimensions_CPU(
     # multi_envs_across_dimensions_GPU(
