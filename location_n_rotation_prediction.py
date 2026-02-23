@@ -1511,7 +1511,7 @@ if __name__ == '__main__':
     # =================================================================== #
 
     _single_env_decoding_error(
-        config_version="env17_r24_2d_vgg16_block2_pool", 
+        config_version="env17_r24_2d_vgg16_fc2", 
         moving_trajectory="uniform",
         sampling_rate="0.3",
         experiment=experiment,
