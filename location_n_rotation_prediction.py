@@ -1514,7 +1514,7 @@ if __name__ == '__main__':
     # =================================================================== #
 
     _single_env_decoding_error(
-        config_version="env17_r24_2d_vgg16_fc2", 
+        config_version="env17_r24_2d_vgg16_block2_pool", 
         moving_trajectory="uniform",
         sampling_rate="0.3",
         experiment=experiment,
@@ -1560,11 +1560,11 @@ if __name__ == '__main__':
 
     #results_VGG16_Block5 = np.load("results/env17_r24/2d/uniform/vgg16/loc_n_rot/l2/ridge_regression_1.0/block5_pool/sr0.3/seed42/res.npy", allow_pickle=True).item()
     #print(results_VGG16_Block5.keys())
-    base = "/Users/neelprabhakar/Python /CNN Spatial Knowledge/Space-units/results/env17_r24/2d/uniform/vgg16/loc_n_rot/l2/ridge_regression_1.0/"
+    '''base = "/Users/neelprabhakar/Python /CNN Spatial Knowledge/Space-units/results/env17_r24/2d/uniform/vgg16/loc_n_rot/l2/ridge_regression_1.0/"
     layers = ["fc2", "block5_pool", "block4_pool", "block2_pool"]
     for layer in layers: 
         try:
             res = np.load(f"{base}{layer}/sr0.3/seed42/res.npy", allow_pickle=True).item()
             print(f"\nLayer: {layer}\nloc mse: {res['loc']['mse']}\nrot mse: {res['rot']['mse']}\ncoeff: {res['coeff']}")
         except FileNotFoundError:
-            print(f"Missing layer: {layer}")
+            print(f"Missing layer: {layer}")'''
