@@ -58,9 +58,12 @@ def _determine_moving_trajectory(
         # make sure a sampled loc's all rotates are in train
         # so the sampling indices need to be locs of all views
         np.random.seed(random_seed)
+        sr = float(sampling_rate)
+        nloc = model_reps.shape[0] // n_rotations
+        ntrain = int(sr * nloc)
         train_sample_loc_indices = np.random.choice(
-            model_reps.shape[0] // n_rotations,
-            size=int(sampling_rate * model_reps.shape[0] // n_rotations),
+            nloc,
+            size=ntrain,
             replace=False,
         )
 
@@ -1483,7 +1486,7 @@ if __name__ == '__main__':
 
     # if we want to override the saved `res.npy`
     # if False, will only run the plotter.
-    override_results = False
+    override_results = True
     
     # Lesion settings
     perform_lesion = False
@@ -1518,7 +1521,7 @@ if __name__ == '__main__':
         feature_selection="l2",
         decoding_model_choice={'name': 'ridge_regression', 'hparams': 1.0},
         random_seed=42,
-        override_results=False,
+        override_results=override_results,
         fresh_start=True
     )
 
