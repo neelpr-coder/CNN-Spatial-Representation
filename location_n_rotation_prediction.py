@@ -33,6 +33,8 @@ Experiment script
     DNN model representations are fit on a linear regression model
     to predict agent's locations and rotations.
 """
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+os.environ["TF_XLA_FLAGS"] = "--tf_xla_auto_jit=0 --tf_xla_enable_xla_devices=false"
 
 tf.config.optimizer.set_jit(False) #possible source of NaN
 tf.keras.mixed_precision.set_global_policy('float32') #possible source of NaN
