@@ -5,6 +5,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = "3"
 import numpy as np
 from PIL import Image
 from tensorflow.keras import backend as K
+import tensorflow as tf
 from keras.preprocessing.image import load_img, img_to_array
 
 
@@ -241,7 +242,21 @@ def load_full_dataset_model_reps(
         else:
             preprocessed_data = preprocessed_data.astype(np.float32, copy=False)
             model_reps = model.predict(preprocessed_data, verbose=1, batch_size=256)
-            print("[Check] model_reps nan=", np.isnan(model_reps).sum(), "inf=", np.isinf(model_reps).sum())
+            nan_count = np.isnan(model_reps).sum()
+            inf_count = np.isinf(model_reps).sum()
+            print(f"[Check] model_reps after predict nan={nan_count} inf={inf_count}")
+
+            if nan_count or inf_count:
+                print(f"[WARN] predict produced nan={nan_count}, inf={inf_count}. Retrying with eager+smaller batch...")
+                tf.config.run_functions_eagerly(True)
+                model_reps = model.predict(preprocessed_data, verbose=1, batch_size=16)
+                tf.config.run_functions_eagerly(False)
+
+                nan_count = np.isnan(model_reps).sum()
+                inf_count = np.isinf(model_reps).sum()
+                print(f"[Check] model_reps after retry nan={nan_count} inf={inf_count}")
+                if nan_count or inf_count:
+                    raise ValueError(f"Still getting nan={nan_count}, inf={inf_count} from model.predict")
 
         # NOTE: solution to OOM for early layers is to save batches to disk
         # and merge on CPU and do whatever operations come below.
@@ -252,13 +267,18 @@ def load_full_dataset_model_reps(
             # except the batch dim.
             model_reps = model_reps.reshape(model_reps.shape[0], -1)
     model_reps = np.asarray(model_reps)
+    nan_count = np.isnan(model_reps).sum()
+    inf_count = np.isinf(model_reps).sum()
+    print(f"[Check] final model_reps nan={nan_count} inf={inf_count} shape={model_reps.shape}")
+    if nan_count or inf_count:
+        raise ValueError(f"NaNs/Infs detected in final model_reps: nan={nan_count}, inf={inf_count}")
 
-    # 1) hard-sanitize any accidental NaNs/Infs (should be 0 normally)
+    '''# 1) hard-sanitize any accidental NaNs/Infs (should be 0 normally)
     model_reps = np.nan_to_num(model_reps, nan=0.0, posinf=0.0, neginf=0.0)
 
     # 2) if you do L2 normalization anywhere, do it safely like this:
     norm = np.linalg.norm(model_reps, axis=1, keepdims=True)
-    model_reps = model_reps / np.maximum(norm, 1e-12)
+    model_reps = model_reps / np.maximum(norm, 1e-12)'''
     
     return model_reps
 
