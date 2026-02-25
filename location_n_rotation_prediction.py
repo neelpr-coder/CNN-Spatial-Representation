@@ -237,6 +237,8 @@ def _fit_decoding_model(
     elif decoding_model_choice['name'] == 'lasso_regression':
         decoding_model = linear_model.Lasso(
             alpha=decoding_model_choice['hparams'])
+    logging.info(f"[Check] X_train nan={np.isnan(X_train).sum()} inf={np.isinf(X_train).sum()}")
+    logging.info(f"[Check] X_test  nan={np.isnan(X_test).sum()}  inf={np.isinf(X_test).sum()}")
     decoding_model.fit(X_train, y_train)
     y_pred = decoding_model.predict(X_test)
 

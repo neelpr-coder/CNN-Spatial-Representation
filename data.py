@@ -240,6 +240,7 @@ def load_full_dataset_model_reps(
                 # unlike model.predict(x) does not support verbosity.
         else:
             model_reps = model.predict(preprocessed_data, verbose=1, batch_size=256)
+            print("[Check] model_reps nan=", np.isnan(model_reps).sum(), "inf=", np.isinf(model_reps).sum())
 
         # NOTE: solution to OOM for early layers is to save batches to disk
         # and merge on CPU and do whatever operations come below.
