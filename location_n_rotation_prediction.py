@@ -43,8 +43,8 @@ Experiment script
 """
 
 
-tf.config.optimizer.set_jit(False) #possible source of NaN
-mixed_precision.set_global_policy('float32') #possible source of NaN
+#tf.config.optimizer.set_jit(False) #possible source of NaN
+#mixed_precision.set_global_policy('float32') #possible source of NaN
 
 def _determine_moving_trajectory(
         moving_trajectory,
@@ -1537,7 +1537,7 @@ if __name__ == '__main__':
                         all_feature_selections.append(feature_selections)
     # =================================================================== #
 
-    _single_env_decoding_error(
+    '''_single_env_decoding_error(
         config_version="env17_r24_2d_vgg16_block2_pool", 
         moving_trajectory="uniform",
         sampling_rate="0.3",
@@ -1547,9 +1547,9 @@ if __name__ == '__main__':
         random_seed=42,
         override_results=override_results,
         fresh_start=True
-    )
+    )'''
 
-    '''multi_envs_across_dimensions_CPU(
+    multi_envs_across_dimensions_CPU(
     # multi_envs_across_dimensions_GPU(
         target_func=_single_env_decoding_error,
         envs=envs,
@@ -1563,9 +1563,9 @@ if __name__ == '__main__':
         random_seeds=random_seeds,
         override_results=override_results,
         # cuda_id_list=[0, 1, 2, 3, 4, 5, 6, 7],
-    )'''
+    )
 
-    '''cross_dimension_analysis(
+    cross_dimension_analysis(
         analysis=analysis,
         envs=envs,
         movement_modes=movement_modes,
@@ -1577,7 +1577,7 @@ if __name__ == '__main__':
         decoding_model_choices=decoding_model_choices,
         random_seeds=random_seeds,
         experiment=experiment
-    )'''
+    )
 
     # print time elapsed
     logging.info(f'Time elapsed: {time.time() - start_time:.2f}s')
