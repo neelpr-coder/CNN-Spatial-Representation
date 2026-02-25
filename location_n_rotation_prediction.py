@@ -34,6 +34,9 @@ Experiment script
     to predict agent's locations and rotations.
 """
 
+tf.config.optimizer.set_jit(False) #possible source of NaN
+tf.keras.mixed_precision.set_global_policy('float32') #possible source of NaN
+
 def _determine_moving_trajectory(
         moving_trajectory,
         results_path,

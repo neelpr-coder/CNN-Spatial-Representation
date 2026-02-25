@@ -28,7 +28,6 @@ def generate_config(
                         template['movement_mode'] = movement_mode
                         template['model_name'] = model_name
                         template['output_layer'] = output_layer
-                        
                         base_dir = os.path.dirname(os.path.abspath(__file__))  # Space-units/
                         configs_dir = os.path.join(base_dir, 'configs')
                         os.makedirs(configs_dir, exist_ok=True)

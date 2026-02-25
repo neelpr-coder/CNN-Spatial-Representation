@@ -239,6 +239,7 @@ def load_full_dataset_model_reps(
                 # Of course, another downside is that model(x)
                 # unlike model.predict(x) does not support verbosity.
         else:
+            preprocessed_data = preprocessed_data.astype(np.float32, copy=False)
             model_reps = model.predict(preprocessed_data, verbose=1, batch_size=256)
             print("[Check] model_reps nan=", np.isnan(model_reps).sum(), "inf=", np.isinf(model_reps).sum())
 
