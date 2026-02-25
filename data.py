@@ -239,7 +239,7 @@ def load_full_dataset_model_reps(
                 # Of course, another downside is that model(x)
                 # unlike model.predict(x) does not support verbosity.
         else:
-            model_reps = model.predict(preprocessed_data, verbose=1, batch_size=256)
+            model_reps = model.predict(preprocessed_data, verbose=1, batch_size=4)
 
         # NOTE: solution to OOM for early layers is to save batches to disk
         # and merge on CPU and do whatever operations come below.
