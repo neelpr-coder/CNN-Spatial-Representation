@@ -35,6 +35,7 @@ Experiment script
 """
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 os.environ["TF_XLA_FLAGS"] = "--tf_xla_auto_jit=0 --tf_xla_enable_xla_devices=false"
+os.environ["XLA_FLAGS"] = "--xla_gpu_disable_async_collectives=true"
 
 tf.config.optimizer.set_jit(False) #possible source of NaN
 tf.keras.mixed_precision.set_global_policy('float32') #possible source of NaN
