@@ -251,7 +251,15 @@ def load_full_dataset_model_reps(
             # when not a fc layer, we need to flatten the output dim
             # except the batch dim.
             model_reps = model_reps.reshape(model_reps.shape[0], -1)
+    model_reps = np.asarray(model_reps)
 
+    # 1) hard-sanitize any accidental NaNs/Infs (should be 0 normally)
+    model_reps = np.nan_to_num(model_reps, nan=0.0, posinf=0.0, neginf=0.0)
+
+    # 2) if you do L2 normalization anywhere, do it safely like this:
+    norm = np.linalg.norm(model_reps, axis=1, keepdims=True)
+    model_reps = model_reps / np.maximum(norm, 1e-12)
+    
     return model_reps
 
 
