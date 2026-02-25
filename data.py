@@ -241,20 +241,32 @@ def load_full_dataset_model_reps(
                 # unlike model.predict(x) does not support verbosity.
         else:
             preprocessed_data = preprocessed_data.astype(np.float32, copy=False)
-            model_reps = model.predict(preprocessed_data, verbose=1, batch_size=256)
+            #model_reps = model.predict(preprocessed_data, verbose=1, batch_size=256)
+            bs = 64
+            outs = []
+            for start in range(0, preprocessed_data.shape[0], bs):
+                batch = preprocessed_data[start:start+bs]
+                out = model(batch, training=False)   # direct forward
+                outs.append(out.numpy())
+            model_reps = np.concatenate(outs, axis=0)
             nan_count = np.isnan(model_reps).sum()
             inf_count = np.isinf(model_reps).sum()
-            print(f"[Check] model_reps after predict nan={nan_count} inf={inf_count}")
+            print(f"[Check] model_reps after forward pass nan={nan_count} inf={inf_count}")
 
             if nan_count or inf_count:
                 print(f"[WARN] predict produced nan={nan_count}, inf={inf_count}. Retrying with eager+smaller batch...")
-                tf.config.run_functions_eagerly(True)
-                model_reps = model.predict(preprocessed_data, verbose=1, batch_size=16)
-                tf.config.run_functions_eagerly(False)
+                outs = []
+                for start in range(0, preprocessed_data.shape[0], bs):
+                    batch = preprocessed_data[start:start+bs]
+                    with tf.device("/CPU:0"):
+                        out = model(batch, training=False)
+                    outs.append(out.numpy())
+                model_reps = np.concatenate(outs, axis=0)
 
                 nan_count = np.isnan(model_reps).sum()
                 inf_count = np.isinf(model_reps).sum()
-                print(f"[Check] model_reps after retry nan={nan_count} inf={inf_count}")
+                print(f"[Check] model_reps after CPU forward nan={nan_count} inf={inf_count}")
+                
                 if nan_count or inf_count:
                     raise ValueError(f"Still getting nan={nan_count}, inf={inf_count} from model.predict")
 
