@@ -6,6 +6,10 @@ os.environ["TF_XLA_FLAGS"] = "--tf_xla_auto_jit=0 --tf_xla_enable_xla_devices=fa
 
 
 import tensorflow as tf
+
+tf.config.optimizer.set_jit(False)
+print("JIT:", tf.config.optimizer.get_jit())  # should print False or '' depending on TF version
+
 import time
 import logging
 import itertools
