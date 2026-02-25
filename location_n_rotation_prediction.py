@@ -418,6 +418,16 @@ def _single_env_decoding_error(
             preprocess_func=preprocess_func,
         )
 
+        print(
+                "[Check] preprocessed_data nan=",
+                np.isnan(preprocessed_data).sum(),
+                "inf=",
+                np.isinf(preprocessed_data).sum(),
+                "min/max=",
+                np.nanmin(preprocessed_data),
+                np.nanmax(preprocessed_data)
+            )
+
         targets_true = data.load_decoding_targets(
             movement_mode=config['movement_mode'],
             env_x_min=config['env_x_min'],
