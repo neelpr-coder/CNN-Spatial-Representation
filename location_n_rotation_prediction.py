@@ -3,6 +3,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = "3"
 os.environ["TF_NUM_INTRAOP_THREADS"] = "4"
 os.environ["TF_NUM_INTEROP_THREADS"] = "2"
 os.environ["TF_XLA_FLAGS"] = "--tf_xla_auto_jit=0 --tf_xla_enable_xla_devices=false"
+#os.environ["CUDA_VISIBLE_DEVICES"] = "-1"  # Force TensorFlow to use CPU because of TF + Fork issues with multiprocessing
 
 
 import tensorflow as tf
@@ -29,8 +30,6 @@ import utils
 import data
 import models
 import lesion
-
-import tensorflow.keras.mixed_precision as mixed_precision
 
 '''print(tf.__version__)
 print(tf.config.list_physical_devices('GPU'))'''
@@ -1549,7 +1548,28 @@ if __name__ == '__main__':
         fresh_start=True
     )'''
 
-    multi_envs_across_dimensions_CPU(
+    print("GPU: ", tf.config.list_physical_devices('GPU'))
+    layers = data.load_model_layers(model_names[0])
+    print("Layers: ", layers)
+    '''for layer in layers: 
+        try:
+            config_ver = f"env17_r24_2d_vgg16_{layer}"
+            _single_env_decoding_error(
+            config_version=config_ver,
+            moving_trajectory="uniform",
+            sampling_rate="0.3",
+            experiment=experiment,
+            feature_selection="l2",
+            decoding_model_choice={'name': 'ridge_regression', 'hparams': 1.0},
+            random_seed=42,
+            override_results=override_results,
+            fresh_start=True
+            )
+        except FileNotFoundError:
+            print(f"Missing layer: {layer}")'''
+
+
+    '''multi_envs_across_dimensions_CPU(
     # multi_envs_across_dimensions_GPU(
         target_func=_single_env_decoding_error,
         envs=envs,
@@ -1578,7 +1598,7 @@ if __name__ == '__main__':
         random_seeds=random_seeds,
         experiment=experiment
     )
-
+'''
     # print time elapsed
     logging.info(f'Time elapsed: {time.time() - start_time:.2f}s')
 
