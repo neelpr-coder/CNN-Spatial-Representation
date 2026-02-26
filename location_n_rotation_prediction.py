@@ -1551,7 +1551,7 @@ if __name__ == '__main__':
     print("GPU: ", tf.config.list_physical_devices('GPU'))
     layers = data.load_model_layers(model_names[0])
     print("Layers: ", layers)
-    '''for layer in layers: 
+    for layer in layers: 
         try:
             config_ver = f"env17_r24_2d_vgg16_{layer}"
             _single_env_decoding_error(
@@ -1566,7 +1566,7 @@ if __name__ == '__main__':
             fresh_start=True
             )
         except FileNotFoundError:
-            print(f"Missing layer: {layer}")'''
+            print(f"Missing layer: {layer}")
 
 
     '''multi_envs_across_dimensions_CPU(
