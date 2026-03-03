@@ -1509,7 +1509,7 @@ if __name__ == '__main__':
 
     # if we want to override the saved `res.npy`
     # if False, will only run the plotter.
-    override_results = True
+    override_results = False
     
     # Lesion settings
     perform_lesion = False
