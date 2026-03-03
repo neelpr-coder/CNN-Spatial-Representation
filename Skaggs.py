@@ -49,13 +49,14 @@ def occupancy_probability(movement_type='uniform', arena_size=(17,17)):
 
 def mean_firing_rate(config, model, preprocess_data):
     model_reps = data.load_full_dataset_model_reps(config, model, preprocess_data)
-    mean_firing_rate = np.mean(model_reps, axis=0)
+    mean_firing_rate = np.mean(model_reps)
 
     return mean_firing_rate
 
 def skaggs(config, model, preprocess_funcx):
     mfr = mean_firing_rate(config, model, preprocess_funcx)
     occupancy = occupancy_probability(movement_type='uniform', arena_size=(17,17))
+    pass
     
 
 if __name__ == "__main__":
@@ -88,6 +89,8 @@ if __name__ == "__main__":
     )
     
     model = model[0]  # unpack model from tuple if necessary
+
+    print(model.shape())
 
     mfr = mean_firing_rate(
         config = config,
