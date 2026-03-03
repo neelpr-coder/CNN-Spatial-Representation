@@ -38,7 +38,7 @@ def check_data_present(data_path, arena_size=(17,17)):
 
 def occupancy_probability(data_path, movement_type='uniform', arena_size=(17,17)):
     H, W = arena_size
-    if movement_type == 'uniform':
+    if movement_type == 'uniform' or movement_type == 'uniform_loc_random_rot':
         if check_data_present(data_path, arena_size):
             occupancy = np.full((H, W), 1/ (H*W), dtype=np.float32)  # initialize with uniform distribution since agent travels to all positions with equal probability
         else:
@@ -56,10 +56,89 @@ def mean_firing_rate(config, model, preprocess_data):
 
     return mean_per_channel
 
-def skaggs(config, model, preprocess_funcx, data_path):
-    lambda_channel = mean_firing_rate(config, model, preprocess_funcx)
-    occupancy = occupancy_probability(data_path, movement_type='uniform', arena_size=(17,17))
-    pass
+def skaggs_list(block, config, model, preprocess_funcx, data_path):
+    if block == None: 
+        raise ValueError("Block cannot be None for Skaggs index calculation.")
+    
+    if block == 'block2_pool':
+        lambda_channel = mean_firing_rate(config, model, preprocess_funcx)
+        occupancy = occupancy_probability(data_path, movement_type='uniform', arena_size=(17,17))
+        p = occupancy.reshape(-1)
+        lambda_i = data.load_full_dataset_model_reps(config, model, preprocess_funcx, batch_size=24)
+        print("lambda_i shape:", lambda_i.shape)  # should be (6936, 401408) because flattened 
+
+        unflattened_reps = lambda_i.reshape(6936, 56, 56, 128)  # reshape to (num_samples, height, width, channels)
+        GAP = unflattened_reps.mean(axis=(1,2))  # global average pooling to get (6936, 128)
+        A = GAP.reshape(289, 24, 128)  # now lambda_i is (289, 24, 128)
+        lam_i = A.mean(axis=1)  # average across rotations to get (289, 128) feature channel activations per spatial location (coordinate)
+        
+        skaggs_indeces = np.zeros(128, dtype=np.float32)
+        for c in range(128):
+            ratio = lam_i[:,c] / (lambda_channel[c] + 1e-10)  # add small constant to avoid division by zero
+            skaggs_unit = p * ratio * np.log2(ratio + 1e-10)  # add small constant to avoid log of zero
+            skaggs_indeces[c] = (np.sum(skaggs_unit))  # add small constant to avoid log of zero
+
+        return skaggs_indeces, lam_i.reshape(17, 17, 128)  # reshape back to spatial layout for heat maps
+    
+    if block == 'block4_pool':
+        lambda_channel = mean_firing_rate(config, model, preprocess_funcx)
+        occupancy = occupancy_probability(data_path, movement_type='uniform', arena_size=(17,17))
+        p = occupancy.reshape(-1)
+        lambda_i = data.load_full_dataset_model_reps(config, model, preprocess_funcx, batch_size=24)
+        print("lambda_i shape:", lambda_i.shape)  # should be (6936, 401408) because flattened 
+
+        unflattened_reps = lambda_i.reshape(6936, 14, 14, 512)  # reshape to (num_samples, height, width, channels)
+        GAP = unflattened_reps.mean(axis=(1,2))  # global average pooling to get (6936, 128)
+        A = GAP.reshape(289, 24, 512)  # now lambda_i is (289, 24, 128)
+        lam_i = A.mean(axis=1)  # average across rotations to get (289, 128) feature channel activations per spatial location (coordinate)
+        
+        skaggs_indeces = np.zeros(512, dtype=np.float32)
+        for c in range(512):
+            ratio = lam_i[:,c] / (lambda_channel[c] + 1e-10)  # add small constant to avoid division by zero
+            skaggs_unit = p * ratio * np.log2(ratio + 1e-10)  # add small constant to avoid log of zero
+            skaggs_indeces[c] = (np.sum(skaggs_unit))  # add small constant to avoid log of zero
+
+        return skaggs_indeces, lam_i.reshape(17, 17, 512)  # reshape back to spatial layout for heat maps
+    
+    if block == 'block5_pool':
+        lambda_channel = mean_firing_rate(config, model, preprocess_funcx)
+        occupancy = occupancy_probability(data_path, movement_type='uniform', arena_size=(17,17))
+        p = occupancy.reshape(-1)
+        lambda_i = data.load_full_dataset_model_reps(config, model, preprocess_funcx, batch_size=24)
+        print("lambda_i shape:", lambda_i.shape)  # should be (6936, 401408) because flattened 
+
+        unflattened_reps = lambda_i.reshape(6936, 7, 7, 512)  # reshape to (num_samples, height, width, channels)
+        GAP = unflattened_reps.mean(axis=(1,2))  # global average pooling to get (6936, 128)
+        A = GAP.reshape(289, 24, 512)  # now lambda_i is (289, 24, 128)
+        lam_i = A.mean(axis=1)  # average across rotations to get (289, 128) feature channel activations per spatial location (coordinate)
+        
+        skaggs_indeces = np.zeros(512, dtype=np.float32)
+        for c in range(512):
+            ratio = lam_i[:,c] / (lambda_channel[c] + 1e-10)  # add small constant to avoid division by zero
+            skaggs_unit = p * ratio * np.log2(ratio + 1e-10)  # add small constant to avoid log of zero
+            skaggs_indeces[c] = (np.sum(skaggs_unit))  # add small constant to avoid log of zero
+
+        return skaggs_indeces, lam_i.reshape(17, 17, 512)  # reshape back to spatial layout for heat maps
+    
+    if block == 'fc2':
+        lambda_channel = mean_firing_rate(config, model, preprocess_funcx)
+        occupancy = occupancy_probability(data_path, movement_type='uniform', arena_size=(17,17))
+        p = occupancy.reshape(-1)
+        lambda_i = data.load_full_dataset_model_reps(config, model, preprocess_funcx, batch_size=24)
+        print("lambda_i shape:", lambda_i.shape)  # should be (6936, 401408) because flattened 
+
+        unflattened_reps = lambda_i.reshape(6936, 4096)  # reshape to (num_samples, height, width, channels)
+        GAP = unflattened_reps.mean(axis=(1,2))  # global average pooling to get (6936, 128)
+        A = GAP.reshape(289, 24, 4096)  # now lambda_i is (289, 24, 128)
+        lam_i = A.mean(axis=1)  # average across rotations to get (289, 128) feature channel activations per spatial location (coordinate)
+        
+        skaggs_indeces = np.zeros(4096, dtype=np.float32)
+        for c in range(4096):
+            ratio = lam_i[:,c] / (lambda_channel[c] + 1e-10)  # add small constant to avoid division by zero
+            skaggs_unit = p * ratio * np.log2(ratio + 1e-10)  # add small constant to avoid log of zero
+            skaggs_indeces[c] = (np.sum(skaggs_unit))  # add small constant to avoid log of zero
+
+        return skaggs_indeces, lam_i.reshape(17, 17, 4096)  # reshape back to spatial layout for heat maps
 
 if __name__ == "__main__":
     logging.info("Starting Skaggs analysis...")
@@ -102,3 +181,9 @@ if __name__ == "__main__":
     print("mfr shape:", mfr.shape)
     print("mfr first 10:", mfr[:10])
     logging.info("Skaggs analysis completed.")
+    occ = occupancy_probability(args.data_path, movement_type='uniform', arena_size=(17,17))
+    skaggs_index, skaggs_map = skaggs_list('block2_pool',config, model, preprocess_funcx, args.data_path)
+
+    print("Skaggs indeces:", skaggs_index)
+    print('Skaggs map shape:', skaggs_map)
+    #print("Occupancy probability:", occ)

@@ -210,7 +210,7 @@ def load_decoding_targets_border_distance(
 
 
 def load_full_dataset_model_reps(
-        config, model, preprocessed_data
+        config, model, preprocessed_data, batch_size=64
     ):
     """
     Generic function to produce model representations
@@ -242,7 +242,7 @@ def load_full_dataset_model_reps(
         else:
             preprocessed_data = preprocessed_data.astype(np.float32, copy=False)
             #model_reps = model.predict(preprocessed_data, verbose=1, batch_size=256)
-            bs = 64
+            bs = batch_size
             outs = []
             for start in range(0, preprocessed_data.shape[0], bs):
                 batch = preprocessed_data[start:start+bs]
