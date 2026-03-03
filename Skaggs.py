@@ -89,8 +89,9 @@ if __name__ == "__main__":
     )
     
     model = model[0]  # unpack model from tuple if necessary
-
-    print(model.shape())
+    '''reps = model.reshape(6936, 56, 56, 128)
+    mean_per_channel = reps.mean(axis=(0,1,2))  # -> (128,)
+    print(mean_per_channel.shape)'''
 
     mfr = mean_firing_rate(
         config = config,
