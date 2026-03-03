@@ -48,18 +48,18 @@ def occupancy_probability(data_path, movement_type='uniform', arena_size=(17,17)
         raise ValueError(f"Unsupported movement_type='{movement_type}' in occupancy_probability().")
 
 def mean_firing_rate(config, model, preprocess_data):
+    """Returns mean firing rate per channel across all spatial positions and rotations."""
     model_reps = data.load_full_dataset_model_reps(config, model, preprocess_data)
 
     reps_array = model_reps.reshape(6936, 56, 56, 128)
     mean_per_channel = reps_array.mean(axis=(0,1,2))  # (128,)
 
-    return model_reps, mean_per_channel
+    return mean_per_channel
 
 def skaggs(config, model, preprocess_funcx, data_path):
-    model_reps, mfr = mean_firing_rate(config, model, preprocess_funcx)
+    lambda_channel = mean_firing_rate(config, model, preprocess_funcx)
     occupancy = occupancy_probability(data_path, movement_type='uniform', arena_size=(17,17))
     pass
-    
 
 if __name__ == "__main__":
     logging.info("Starting Skaggs analysis...")
@@ -92,12 +92,8 @@ if __name__ == "__main__":
     
     if isinstance(model, tuple):
         model = model[0] # unpack model from tuple if necessary
-    
-    #reps_array = model.reshape(6936, 56, 56, 128)
-    #mean_per_channel = reps.mean(axis=(0,1,2))  # -> (128,)
-    #print(mean_per_channel.shape)
 
-    model_reps, mfr = mean_firing_rate(
+    mfr = mean_firing_rate(
         config = config,
         model = model, 
         preprocess_data = preprocess_funcx
