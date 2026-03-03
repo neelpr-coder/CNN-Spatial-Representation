@@ -36,7 +36,7 @@ def check_data_present(arena_size=(17,17)):
     images_present = len(files)
     return images_present == total_expected_images
 
-def occupancy_probability( movement_type='uniform', arena_size=(17,17)):
+def occupancy_probability(movement_type='uniform', arena_size=(17,17)):
     H, W = arena_size
     if movement_type == 'uniform':
         if check_data_present(arena_size):
