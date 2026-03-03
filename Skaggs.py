@@ -99,5 +99,5 @@ if __name__ == "__main__":
         preprocess_data = preprocess_funcx
         )
     
-    print(mfr)
+    print(f"mfr = {mfr}")
     logging.info("Skaggs analysis completed.")
