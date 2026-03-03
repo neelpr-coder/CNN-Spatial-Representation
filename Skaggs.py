@@ -24,38 +24,40 @@ def parse_args():
     p.add_argument("--config", required=True)
     return p.parse_args()
 
-def check_data_present(arena_size=(17,17)):
-    if not os.path.exists("/Users/neelprabhakar/Desktop/unity/2d"):
+def check_data_present(data_path, arena_size=(17,17)):
+    if not os.path.exists(data_path):
         return False
     
     H, W = arena_size
     total_expected_images = H * W * n_rotations
 
-    files = [f for f in os.listdir("/Users/neelprabhakar/Desktop/unity/2d") if f.endswith('.png')]
+    files = [f for f in os.listdir(data_path) if f.endswith('.png')]
 
     images_present = len(files)
     return images_present == total_expected_images
 
-def occupancy_probability(movement_type='uniform', arena_size=(17,17)):
+def occupancy_probability(data_path, movement_type='uniform', arena_size=(17,17)):
     H, W = arena_size
     if movement_type == 'uniform':
-        if check_data_present(arena_size):
+        if check_data_present(data_path, arena_size):
             occupancy = np.full((H, W), 1/ (H*W), dtype=np.float32)  # initialize with uniform distribution since agent travels to all positions with equal probability
         else:
-            occupancy = np.zeros((H, W), dtype=np.float32)  # initialize with zeros if data is not present 
+            raise ValueError(f"Data not present in path {data_path}")
         return occupancy
     else:
         raise ValueError(f"Unsupported movement_type='{movement_type}' in occupancy_probability().")
 
 def mean_firing_rate(config, model, preprocess_data):
     model_reps = data.load_full_dataset_model_reps(config, model, preprocess_data)
-    mean_firing_rate = np.mean(model_reps)
 
-    return mean_firing_rate
+    reps_array = model_reps.reshape(6936, 56, 56, 128)
+    mean_per_channel = reps_array.mean(axis=(0,1,2))  # (128,)
 
-def skaggs(config, model, preprocess_funcx):
-    mfr = mean_firing_rate(config, model, preprocess_funcx)
-    occupancy = occupancy_probability(movement_type='uniform', arena_size=(17,17))
+    return model_reps, mean_per_channel
+
+def skaggs(config, model, preprocess_funcx, data_path):
+    model_reps, mfr = mean_firing_rate(config, model, preprocess_funcx)
+    occupancy = occupancy_probability(data_path, movement_type='uniform', arena_size=(17,17))
     pass
     
 
@@ -88,16 +90,19 @@ if __name__ == "__main__":
         output_layer=config['output_layer']
     )
     
-    model = model[0]  # unpack model from tuple if necessary
-    reps = model.reshape(6936, 56, 56, 128)
-    mean_per_channel = reps.mean(axis=(0,1,2))  # -> (128,)
+    if isinstance(model, tuple):
+        model = model[0] # unpack model from tuple if necessary
+    
+    #reps_array = model.reshape(6936, 56, 56, 128)
+    #mean_per_channel = reps.mean(axis=(0,1,2))  # -> (128,)
     #print(mean_per_channel.shape)
 
-    mfr = mean_firing_rate(
+    model_reps, mfr = mean_firing_rate(
         config = config,
         model = model, 
         preprocess_data = preprocess_funcx
         )
     
-    print(f"mfr = {mfr}")
+    print("mfr shape:", mfr.shape)
+    print("mfr first 10:", mfr[:10])
     logging.info("Skaggs analysis completed.")
