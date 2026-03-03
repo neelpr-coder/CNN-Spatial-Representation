@@ -53,8 +53,10 @@ def mean_firing_rate(config, model, preprocess_data):
 
     return mean_firing_rate
 
-def skaggs():
-    pass
+def skaggs(config, model, preprocess_funcx):
+    mfr = mean_firing_rate(config, model, preprocess_funcx)
+    occupancy = occupancy_probability(movement_type='uniform', arena_size=(17,17))
+    
 
 if __name__ == "__main__":
     logging.info("Starting Skaggs analysis...")
@@ -81,14 +83,11 @@ if __name__ == "__main__":
     )
 
     model = models.load_model(
-        model_name = config['model_name']
+        model_name=config['model_name'], 
+        output_layer=config['output_layer']
     )
     
     model = model[0]  # unpack model from tuple if necessary
-
-    print("model type:", type(model))
-    if isinstance(model, tuple):
-        print("tuple types:", [type(x) for x in model])
 
     mfr = mean_firing_rate(
         config = config,
