@@ -87,8 +87,6 @@ def skaggs_list(block, config, model, preprocess_funcx, data_path):
         occupancy = occupancy_probability(data_path, movement_type='uniform', arena_size=(17,17))
         p = occupancy.reshape(-1)
 
-        #print("lambda_i shape:", lambda_i.shape)  # should be (6936, 401408) because flattened 
-
         unflattened_reps = reps_flat.reshape(6936, 56, 56, 128)  # reshape to (num_samples, height, width, channels)
         GAP = unflattened_reps.mean(axis=(1,2))  # global average pooling to get (6936, 128)
         A = GAP.reshape(289, 24, 128)  # now lambda_i is (289, 24, 128)
@@ -220,14 +218,7 @@ if __name__ == "__main__":
     if isinstance(model, tuple):
         model = model[0] # unpack model from tuple if necessary
 
-    mfr = mean_firing_rate(
-        config = config,
-        model = model, 
-        preprocess_data = preprocess_funcx
-        )
     
-    print("mfr shape:", mfr.shape)
-    print("mfr first 10:", mfr[:10])
     logging.info("Skaggs analysis completed.")
     occ = occupancy_probability(args.data_path, movement_type='uniform', arena_size=(17,17))
     skaggs_index, skaggs_map = skaggs_list('block2_pool',config, model, preprocess_funcx, args.data_path)
