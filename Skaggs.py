@@ -10,6 +10,9 @@ import data
 import utils
 import models
 
+CACHE_DIR = "cache"
+os.makedirs(CACHE_DIR, exist_ok=True)
+
 x_min = -1
 x_max = 1
 z_min = -1
@@ -47,27 +50,46 @@ def occupancy_probability(data_path, movement_type='uniform', arena_size=(17,17)
     else:
         raise ValueError(f"Unsupported movement_type='{movement_type}' in occupancy_probability().")
 
-def mean_firing_rate(config, model, preprocess_data):
+def mean_firing_rate(block, model_reps_flat):
     """Returns mean firing rate per channel across all spatial positions and rotations."""
-    model_reps = data.load_full_dataset_model_reps(config, model, preprocess_data)
-
-    reps_array = model_reps.reshape(6936, 56, 56, 128)
-    mean_per_channel = reps_array.mean(axis=(0,1,2))  # (128,)
-
-    return mean_per_channel
+    if block is None:
+        raise ValueError("Block cannot be None for mean firing rate calculation.")
+    if block == 'block2_pool':
+        reps_array = model_reps_flat.reshape(6936, 56, 56, 128)
+        return reps_array.mean(axis=(0,1,2))  # (128,)
+    if block == 'block4_pool':
+        reps_array = model_reps_flat.reshape(6936, 14, 14, 512)
+        return reps_array.mean(axis=(0,1,2))  # (512,)
+    if block == 'block5_pool':
+        reps_array = model_reps_flat.reshape(6936, 7, 7, 512)
+        return reps_array.mean(axis=(0,1,2))  # (512,)
+    if block == 'fc2':
+        reps_array = model_reps_flat.reshape(6936, 4096)
+        return reps_array.mean(axis=0)  # (4096,)
 
 def skaggs_list(block, config, model, preprocess_funcx, data_path):
     if block == None: 
         raise ValueError("Block cannot be None for Skaggs index calculation.")
     
     if block == 'block2_pool':
-        lambda_channel = mean_firing_rate(config, model, preprocess_funcx)
+        cache_name = f"{block}_{config['model_name']}_{config['output_layer']}.npy"
+        cache_path = os.path.join(CACHE_DIR, cache_name)
+        if os.path.exists(cache_path):
+            print(f"[Cache] Loading reps from: {cache_path}")
+            reps_flat = np.load(cache_path)
+        else:
+            print("[Cache] No cached reps found. Running forward pass...")
+            reps_flat = data.load_full_dataset_model_reps(config, model, preprocess_funcx, batch_size=24)
+            np.save(cache_path, reps_flat)
+            print(f"[Cache] Saved reps to: {cache_path}")
+
+        lambda_channel = mean_firing_rate(block, reps_flat)
         occupancy = occupancy_probability(data_path, movement_type='uniform', arena_size=(17,17))
         p = occupancy.reshape(-1)
-        lambda_i = data.load_full_dataset_model_reps(config, model, preprocess_funcx, batch_size=24)
-        print("lambda_i shape:", lambda_i.shape)  # should be (6936, 401408) because flattened 
 
-        unflattened_reps = lambda_i.reshape(6936, 56, 56, 128)  # reshape to (num_samples, height, width, channels)
+        #print("lambda_i shape:", lambda_i.shape)  # should be (6936, 401408) because flattened 
+
+        unflattened_reps = reps_flat.reshape(6936, 56, 56, 128)  # reshape to (num_samples, height, width, channels)
         GAP = unflattened_reps.mean(axis=(1,2))  # global average pooling to get (6936, 128)
         A = GAP.reshape(289, 24, 128)  # now lambda_i is (289, 24, 128)
         lam_i = A.mean(axis=1)  # average across rotations to get (289, 128) feature channel activations per spatial location (coordinate)
@@ -81,13 +103,22 @@ def skaggs_list(block, config, model, preprocess_funcx, data_path):
         return skaggs_indeces, lam_i.reshape(17, 17, 128)  # reshape back to spatial layout for heat maps
     
     if block == 'block4_pool':
-        lambda_channel = mean_firing_rate(config, model, preprocess_funcx)
+        cache_name = f"{block}_{config['model_name']}_{config['output_layer']}.npy"
+        cache_path = os.path.join(CACHE_DIR, cache_name)
+        if os.path.exists(cache_path):
+            print(f"[Cache] Loading reps from: {cache_path}")
+            reps_flat = np.load(cache_path)
+        else:
+            print("[Cache] No cached reps found. Running forward pass...")
+            reps_flat = data.load_full_dataset_model_reps(config, model, preprocess_funcx, batch_size=24)
+            np.save(cache_path, reps_flat)
+            print(f"[Cache] Saved reps to: {cache_path}")
+        
+        lambda_channel = mean_firing_rate(block, reps_flat)
         occupancy = occupancy_probability(data_path, movement_type='uniform', arena_size=(17,17))
         p = occupancy.reshape(-1)
-        lambda_i = data.load_full_dataset_model_reps(config, model, preprocess_funcx, batch_size=24)
-        print("lambda_i shape:", lambda_i.shape)  # should be (6936, 401408) because flattened 
 
-        unflattened_reps = lambda_i.reshape(6936, 14, 14, 512)  # reshape to (num_samples, height, width, channels)
+        unflattened_reps = reps_flat.reshape(6936, 14, 14, 512)  # reshape to (num_samples, height, width, channels)
         GAP = unflattened_reps.mean(axis=(1,2))  # global average pooling to get (6936, 128)
         A = GAP.reshape(289, 24, 512)  # now lambda_i is (289, 24, 128)
         lam_i = A.mean(axis=1)  # average across rotations to get (289, 128) feature channel activations per spatial location (coordinate)
@@ -101,13 +132,22 @@ def skaggs_list(block, config, model, preprocess_funcx, data_path):
         return skaggs_indeces, lam_i.reshape(17, 17, 512)  # reshape back to spatial layout for heat maps
     
     if block == 'block5_pool':
-        lambda_channel = mean_firing_rate(config, model, preprocess_funcx)
+        cache_name = f"{block}_{config['model_name']}_{config['output_layer']}.npy"
+        cache_path = os.path.join(CACHE_DIR, cache_name)
+        if os.path.exists(cache_path):
+            print(f"[Cache] Loading reps from: {cache_path}")
+            reps_flat = np.load(cache_path)
+        else:
+            print("[Cache] No cached reps found. Running forward pass...")
+            reps_flat = data.load_full_dataset_model_reps(config, model, preprocess_funcx, batch_size=24)
+            np.save(cache_path, reps_flat)
+            print(f"[Cache] Saved reps to: {cache_path}")
+        
+        lambda_channel = mean_firing_rate(block, reps_flat)
         occupancy = occupancy_probability(data_path, movement_type='uniform', arena_size=(17,17))
         p = occupancy.reshape(-1)
-        lambda_i = data.load_full_dataset_model_reps(config, model, preprocess_funcx, batch_size=24)
-        print("lambda_i shape:", lambda_i.shape)  # should be (6936, 401408) because flattened 
 
-        unflattened_reps = lambda_i.reshape(6936, 7, 7, 512)  # reshape to (num_samples, height, width, channels)
+        unflattened_reps = reps_flat.reshape(6936, 7, 7, 512)  # reshape to (num_samples, height, width, channels)
         GAP = unflattened_reps.mean(axis=(1,2))  # global average pooling to get (6936, 128)
         A = GAP.reshape(289, 24, 512)  # now lambda_i is (289, 24, 128)
         lam_i = A.mean(axis=1)  # average across rotations to get (289, 128) feature channel activations per spatial location (coordinate)
@@ -121,14 +161,22 @@ def skaggs_list(block, config, model, preprocess_funcx, data_path):
         return skaggs_indeces, lam_i.reshape(17, 17, 512)  # reshape back to spatial layout for heat maps
     
     if block == 'fc2':
-        lambda_channel = mean_firing_rate(config, model, preprocess_funcx)
+        cache_name = f"{block}_{config['model_name']}_{config['output_layer']}.npy"
+        cache_path = os.path.join(CACHE_DIR, cache_name)
+        if os.path.exists(cache_path):
+            print(f"[Cache] Loading reps from: {cache_path}")
+            reps_flat = np.load(cache_path)
+        else:
+            print("[Cache] No cached reps found. Running forward pass...")
+            reps_flat = data.load_full_dataset_model_reps(config, model, preprocess_funcx, batch_size=24)
+            np.save(cache_path, reps_flat)
+            print(f"[Cache] Saved reps to: {cache_path}")
+        
+        lambda_channel = mean_firing_rate(block, reps_flat)
         occupancy = occupancy_probability(data_path, movement_type='uniform', arena_size=(17,17))
         p = occupancy.reshape(-1)
-        lambda_i = data.load_full_dataset_model_reps(config, model, preprocess_funcx, batch_size=24)
-        print("lambda_i shape:", lambda_i.shape)  # should be (6936, 401408) because flattened 
 
-        unflattened_reps = lambda_i.reshape(6936, 4096)  # reshape to (num_samples, height, width, channels)
-        GAP = unflattened_reps.mean(axis=(1,2))  # global average pooling to get (6936, 128)
+        unflattened_reps = reps_flat.reshape(6936, 4096)  # reshape to (num_samples, height, width, channels)
         A = GAP.reshape(289, 24, 4096)  # now lambda_i is (289, 24, 128)
         lam_i = A.mean(axis=1)  # average across rotations to get (289, 128) feature channel activations per spatial location (coordinate)
         
@@ -136,7 +184,7 @@ def skaggs_list(block, config, model, preprocess_funcx, data_path):
         for c in range(4096):
             ratio = lam_i[:,c] / (lambda_channel[c] + 1e-10)  # add small constant to avoid division by zero
             skaggs_unit = p * ratio * np.log2(ratio + 1e-10)  # add small constant to avoid log of zero
-            skaggs_indeces[c] = (np.sum(skaggs_unit))  # add small constant to avoid log of zero
+            skaggs_indeces[c] = np.sum(skaggs_unit)  # add small constant to avoid log of zero
 
         return skaggs_indeces, lam_i.reshape(17, 17, 4096)  # reshape back to spatial layout for heat maps
 
