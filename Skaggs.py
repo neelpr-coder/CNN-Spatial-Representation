@@ -4,7 +4,7 @@ import os
 import tensorflow as tf
 from tensorflow.keras import backend as K
 import logging
-
+import argparse
 
 import data
 import utils
@@ -17,6 +17,12 @@ z_max = 1
 multiplier = 8
 
 n_rotations = 24
+
+def parse_args():
+    p = argparse.ArgumentParser()
+    p.add_argument("--data_path", required=True)
+    p.add_argument("--config", required=True)
+    return p.parse_args()
 
 def check_data_present(arena_size=(17,17)):
     if not os.path.exists("/Users/neelprabhakar/Desktop/unity/2d"):
@@ -52,12 +58,12 @@ def skaggs():
 
 if __name__ == "__main__":
     logging.info("Starting Skaggs analysis...")
-    config_path = "env17_r24_2d_vgg16_block2_pool"
-    config = utils.load_config(config_path)
+    args = parse_args()
+    config = utils.load_config(args.config)
 
     preprocess_funcx = data.load_preprocessed_data(
         config = config,
-        data_path = "/Users/neelprabhakar/Desktop/unity/2d", 
+        data_path = args.data_path, 
         movement_mode = '2d',
         env_x_min = x_min,
         env_x_max = x_max,
