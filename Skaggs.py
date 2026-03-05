@@ -1,4 +1,6 @@
 import seaborn as sb 
+import matplotlib.pyplot as plt
+import pandas as pd
 import numpy as np
 import os
 import tensorflow as tf
@@ -62,9 +64,6 @@ def cache_builder(block, model, preprocessed_data, n_positions=289):
         if out.ndim == 4:
             # out: (bs, H, W, C) -> GAP: (bs, C)
             out = out.mean(axis=(1, 2))
-            '''if start == 0:
-                print("DEBUG out shape:", out.shape, "dtype:", out.dtype)
-                print("DEBUG out min/max:", np.min(out), np.max(out))'''
 
         # out is now (bs, C)
         bs = out.shape[0]
@@ -78,8 +77,8 @@ def cache_builder(block, model, preprocessed_data, n_positions=289):
             lam_i_sum[p] += out[i]
 
     # average over rotations for lam_i, and over all samples for lambda_c
-    lam_i = (lam_i_sum / float(n_rotations)).astype(np.float32)                 # (289, C)
-    lambda_c = (lam_c_sum / float(image_samples)).astype(np.float32)       # (C,)
+    lam_i = (lam_i_sum / float(n_rotations)).astype(np.float32) # (289, C)
+    lambda_c = (lam_c_sum / float(image_samples)).astype(np.float32) # (C,)
 
     # save small cache
     np.savez_compressed(cache_path, lam_i=lam_i, lambda_c=lambda_c)
@@ -131,7 +130,7 @@ def skaggs_list(block, config, model, preprocess_funcx, data_path):
         lam_i = d["lam_i"]
         lambda_c = d["lambda_c"]
     else:
-        print("[Cache] No small cache found. Building it with streaming forward pass...")
+        print("[Cache] No small cache found. Building and caching it now...")
         lam_i, lambda_c = cache_builder(
             block=block,
             model=model,
@@ -141,26 +140,51 @@ def skaggs_list(block, config, model, preprocess_funcx, data_path):
     occupancy = occupancy_probability(data_path, movement_type='uniform', arena_size=(17,17))
     p = occupancy.reshape(-1)
 
-    '''lambda_from_lam_i = (p[:, None] * lam_i).sum(axis=0)  # (C,)
-    print("max abs diff lambda_c vs sum(p*lam_i):", np.max(np.abs(lambda_c - lambda_from_lam_i)))
-    print("lambda_c min/max:", lambda_c.min(), lambda_c.max())
-    print("lambda_from_lam_i min/max:", lambda_from_lam_i.min(), lambda_from_lam_i.max())'''
-
     eps = 1e-10
     ratio = lam_i / (lambda_c[None, :] + eps)     # (289, C)
     skaggs = np.sum(p[:, None] * ratio * np.log2(ratio + eps), axis=0).astype(np.float32)  # (C,)
 
     C = BLOCK_SPECS[block][2]
-    return skaggs, lam_i.reshape(17, 17, C) 
+    return skaggs, lam_i 
     
-def find_top_k_skaggs_units(block, skaggs, k=10):
-    sorted_skaggs = np.sort(skaggs)[::-1]  
-    top_units = sorted_skaggs[:k]  # top k units
-    return block, top_units, sorted_skaggs
+def find_top_k_skaggs_units_and_indexes(skaggs, k=10):
+    top_k_indexes = np.argsort(skaggs)[::-1][:k]
+    return top_k_indexes
 
+def build_place_fields(config, model, preprocess_func, data_path, arena_size=(17,17), k=10):
+    block = config['output_layer']
+    skaggs, lambda_i = skaggs_list(block=block, config=config, model=model, preprocess_funcx=preprocess_func, data_path=data_path)
+    top_k_skaggs_units = find_top_k_skaggs_units_and_indexes(skaggs, k=k)
 
-def build_place_fields():
-    sb.heatmap()
+    cols = 5 
+    rows = int(np.ceil(k / cols))
+    fig, axes = plt.subplots(rows, cols, figsize=(cols*4, rows*4))
+    axes = np.array(axes).reshape(-1)
+
+    for ax_i, unit in enumerate(top_k_skaggs_units):
+        ax = axes[ax_i]
+        heatmap = lambda_i[:, unit].reshape(arena_size)
+        heatmap = (heatmap - heatmap.min()) / (heatmap.max() - heatmap.min() + 1e-12)
+
+        sb.heatmap(heatmap, ax=ax, cbar=False, vmin=0, vmax=1)
+        ax.invert_yaxis()  
+        ax.set_title(f"Unit {unit} | Skaggs={skaggs[unit]:.8g}")
+
+    # hide unused axes
+    for j in range(len(top_k_skaggs_units), len(axes)):
+        axes[j].axis("off")
+
+    fig.suptitle(f"Top {k} place fields in {block} (λ maps)", y=1.02)
+    plt.tight_layout()
+
+    makdir = os.path.join(SCRIPT_DIR, "skaggs_place_fields")
+    os.makedirs(makdir, exist_ok=True)
+    save_path = os.path.join(makdir, f"skaggs_place_fields_{block}.png")
+    fig.savefig(save_path)
+
+    plt.show()
+
+    return
 
 if __name__ == "__main__":
     logging.info("Starting Skaggs analysis...")
@@ -194,10 +218,6 @@ if __name__ == "__main__":
     if isinstance(model, tuple):
         model = model[0] # unpack model from tuple if necessary
 
-    
+    heat = build_place_fields(config, model, preprocess_funcx, args.data_path, arena_size=(17,17))
+
     logging.info("Skaggs analysis completed.")
-    occ = occupancy_probability(args.data_path, movement_type='uniform', arena_size=(17,17))
-    skaggs_values, skaggs_map = skaggs_list(config['output_layer'],config, model, preprocess_funcx, args.data_path)
-    _, top_10_skaggs_units, all_skaggs = find_top_k_skaggs_units('block4_pool', skaggs_values)
-    #print("All Skaggs values for block4_pool:", all_skaggs)
-    print("Top 10 Skaggs units in block4_pool:", top_10_skaggs_units)
