@@ -11,7 +11,12 @@ import utils
 import models
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-CACHE_DIR = os.join(SCRIPT_DIR, "cache")
+
+CACHE_DIR = os.environ.get(
+    "CNN_CACHE_DIR",
+    os.path.join(SCRIPT_DIR, "cache")
+)
+
 os.makedirs(CACHE_DIR, exist_ok=True)
 
 x_min = -1
