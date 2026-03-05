@@ -10,7 +10,8 @@ import data
 import utils
 import models
 
-CACHE_DIR = "cache"
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+CACHE_DIR = os.join(SCRIPT_DIR, "cache")
 os.makedirs(CACHE_DIR, exist_ok=True)
 
 x_min = -1
@@ -72,7 +73,9 @@ def skaggs_list(block, config, model, preprocess_funcx, data_path):
         raise ValueError("Block cannot be None for Skaggs index calculation.")
     
     if block == 'block2_pool':
-        cache_name = f"{block}_{config['model_name']}_{config['output_layer']}.npy"
+        if config["output_layer"] != block:
+            raise ValueError(f"Config output_layer={config['output_layer']} but block={block}. They must match.")
+        cache_name = f"{block}.npy"
         cache_path = os.path.join(CACHE_DIR, cache_name)
         if os.path.exists(cache_path):
             print(f"[Cache] Loading reps from: {cache_path}")
@@ -186,6 +189,9 @@ def skaggs_list(block, config, model, preprocess_funcx, data_path):
 
         return skaggs_indeces, lam_i.reshape(17, 17, 4096)  # reshape back to spatial layout for heat maps
 
+def build_place_fields():
+    pass
+
 if __name__ == "__main__":
     logging.info("Starting Skaggs analysis...")
     args = parse_args()
@@ -223,6 +229,5 @@ if __name__ == "__main__":
     occ = occupancy_probability(args.data_path, movement_type='uniform', arena_size=(17,17))
     skaggs_index, skaggs_map = skaggs_list('block2_pool',config, model, preprocess_funcx, args.data_path)
 
-    print("Skaggs indeces:", skaggs_index)
-    print('Skaggs map shape:', skaggs_map)
-    #print("Occupancy probability:", occ)
+    #print("Skaggs indeces:", skaggs_index)
+    #print('Skaggs map shape:', skaggs_map)
