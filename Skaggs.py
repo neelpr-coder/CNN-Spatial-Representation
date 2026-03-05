@@ -2,6 +2,7 @@ import seaborn as sb
 import numpy as np
 import os
 import tensorflow as tf
+from tensorflow.keras import backend as K
 import logging
 import argparse
 
@@ -32,7 +33,7 @@ def parse_args():
     p.add_argument("--config", required=True)
     return p.parse_args()
 
-def cache_builder(block, config, model, preprocessed_data, data_path, n_positions=289):
+def cache_builder(block, model, preprocessed_data, n_positions=289):
     cache_path = os.path.join(CACHE_DIR, f"{block}_lam_i.npz")
     batch_size = 24
     BLOCK_SPECS = {
@@ -54,25 +55,27 @@ def cache_builder(block, config, model, preprocessed_data, data_path, n_position
     lam_c_sum = np.zeros((C,), dtype=np.float32)  # (C,)
     preprocessed_data = preprocessed_data.astype(np.float32, copy=False)
 
-    for start in range(0, preprocessed_data.shape[0], batch_size):
+    for start in range(0, image_samples, batch_size):
         batch = preprocessed_data[start:start+batch_size]
         out = model(batch, training=False).numpy()
 
-        if block != "fc2":
+        if out.ndim == 4:
             # out: (bs, H, W, C) -> GAP: (bs, C)
             out = out.mean(axis=(1, 2))
+            '''if start == 0:
+                print("DEBUG out shape:", out.shape, "dtype:", out.dtype)
+                print("DEBUG out min/max:", np.min(out), np.max(out))'''
 
         # out is now (bs, C)
         bs = out.shape[0]
         idx = np.arange(start, start + bs)
         pos_idx = idx // n_rotations   # 0..288
 
-        # accumulate per-position and global sums
-        # (loop is fine; 6936 total)
+        lam_c_sum += out.sum(axis=0)
+
         for i in range(bs):
             p = pos_idx[i]
             lam_i_sum[p] += out[i]
-            lam_c_sum += out[i]
 
     # average over rotations for lam_i, and over all samples for lambda_c
     lam_i = (lam_i_sum / float(n_rotations)).astype(np.float32)                 # (289, C)
@@ -118,8 +121,8 @@ def skaggs_list(block, config, model, preprocess_funcx, data_path):
         "fc2": (None, None, 4096)
     }
 
-    if config['output_layer'] != block:
-        raise ValueError(f"Config output_layer={config['output_layer']} but block={block}. They must match.")
+    if block not in BLOCK_SPECS:
+        raise ValueError(f"Unsupported block '{block}' for Skaggs index calculation. Supported blocks: {list(BLOCK_SPECS.keys())}")
     
     cache_path = os.path.join(CACHE_DIR, f"{block}_lam_i.npz")
     if os.path.exists(cache_path):
@@ -131,35 +134,33 @@ def skaggs_list(block, config, model, preprocess_funcx, data_path):
         print("[Cache] No small cache found. Building it with streaming forward pass...")
         lam_i, lambda_c = cache_builder(
             block=block,
-            config=config,
             model=model,
-            preprocessed_data=preprocess_funcx,   # this is your full dataset array
-            data_path=cache_path,
+            preprocessed_data=preprocess_funcx,
         )
 
-        occupancy = occupancy_probability(data_path, movement_type='uniform', arena_size=(17,17))
-        p = occupancy.reshape(-1)
+    occupancy = occupancy_probability(data_path, movement_type='uniform', arena_size=(17,17))
+    p = occupancy.reshape(-1)
 
-        eps = 1e-10
-        ratio = lam_i / (lambda_c[None, :] + eps)     # (289, C)
-        skaggs = np.sum(p[:, None] * ratio * np.log2(ratio + eps), axis=0).astype(np.float32)  # (C,)
+    '''lambda_from_lam_i = (p[:, None] * lam_i).sum(axis=0)  # (C,)
+    print("max abs diff lambda_c vs sum(p*lam_i):", np.max(np.abs(lambda_c - lambda_from_lam_i)))
+    print("lambda_c min/max:", lambda_c.min(), lambda_c.max())
+    print("lambda_from_lam_i min/max:", lambda_from_lam_i.min(), lambda_from_lam_i.max())'''
 
-        if block == 'block2_pool':
-            _, _, C = BLOCK_SPECS[block]
-            return skaggs, lam_i.reshape(17, 17, C)  # reshape back to spatial layout for heat maps
-        if block == 'block4_pool':
-            _, _, C = BLOCK_SPECS[block]
-            return skaggs, lam_i.reshape(17, 17, C)  # reshape back to spatial layout for heat maps
-        if block == 'block5_pool':
-            _, _, C = BLOCK_SPECS[block]
-            return skaggs, lam_i.reshape(17, 17, C)  # reshape back to spatial layout for heat maps
-        if block == 'fc2':
-            _, _, C = BLOCK_SPECS[block]
-            return skaggs, lam_i.reshape(17, 17, C)  # reshape back to spatial layout for heat maps
+    eps = 1e-10
+    ratio = lam_i / (lambda_c[None, :] + eps)     # (289, C)
+    skaggs = np.sum(p[:, None] * ratio * np.log2(ratio + eps), axis=0).astype(np.float32)  # (C,)
+
+    C = BLOCK_SPECS[block][2]
+    return skaggs, lam_i.reshape(17, 17, C) 
     
+def find_top_k_skaggs_units(block, skaggs, k=10):
+    sorted_skaggs = np.sort(skaggs)[::-1]  
+    top_units = sorted_skaggs[:k]  # top k units
+    return block, top_units, sorted_skaggs
+
 
 def build_place_fields():
-    pass
+    sb.heatmap()
 
 if __name__ == "__main__":
     logging.info("Starting Skaggs analysis...")
@@ -196,4 +197,7 @@ if __name__ == "__main__":
     
     logging.info("Skaggs analysis completed.")
     occ = occupancy_probability(args.data_path, movement_type='uniform', arena_size=(17,17))
-    skaggs_index, skaggs_map = skaggs_list('block2_pool',config, model, preprocess_funcx, args.data_path)
+    skaggs_values, skaggs_map = skaggs_list(config['output_layer'],config, model, preprocess_funcx, args.data_path)
+    _, top_10_skaggs_units, all_skaggs = find_top_k_skaggs_units('block4_pool', skaggs_values)
+    #print("All Skaggs values for block4_pool:", all_skaggs)
+    print("Top 10 Skaggs units in block4_pool:", top_10_skaggs_units)
