@@ -2,7 +2,6 @@ import seaborn as sb
 import numpy as np
 import os
 import tensorflow as tf
-from tensorflow.keras import backend as K
 import logging
 import argparse
 
@@ -33,6 +32,58 @@ def parse_args():
     p.add_argument("--config", required=True)
     return p.parse_args()
 
+def cache_builder(block, config, model, preprocessed_data, data_path, n_positions=289):
+    cache_path = os.path.join(CACHE_DIR, f"{block}_lam_i.npz")
+    batch_size = 24
+    BLOCK_SPECS = {
+        "block2_pool": (56, 56, 128),
+        "block4_pool": (14, 14, 512),
+        "block5_pool": (7, 7, 512),
+        "fc2": (None, None, 4096)
+    }
+    if block not in BLOCK_SPECS:
+        raise ValueError(f"Unsupported block '{block}' for caching. Supported blocks: {list(BLOCK_SPECS.keys())}")
+    
+    _, _, C = BLOCK_SPECS[block]
+    image_samples = n_positions*n_rotations  # 17*17*24 = 6936
+
+    if preprocessed_data.shape[0] != image_samples:
+        raise ValueError(f"Expected {image_samples} samples in preprocessed_data but got {preprocessed_data.shape[0]}.")
+
+    lam_i_sum = np.zeros((n_positions, C), dtype=np.float32)  # (289, C)
+    lam_c_sum = np.zeros((C,), dtype=np.float32)  # (C,)
+    preprocessed_data = preprocessed_data.astype(np.float32, copy=False)
+
+    for start in range(0, preprocessed_data.shape[0], batch_size):
+        batch = preprocessed_data[start:start+batch_size]
+        out = model(batch, training=False).numpy()
+
+        if block != "fc2":
+            # out: (bs, H, W, C) -> GAP: (bs, C)
+            out = out.mean(axis=(1, 2))
+
+        # out is now (bs, C)
+        bs = out.shape[0]
+        idx = np.arange(start, start + bs)
+        pos_idx = idx // n_rotations   # 0..288
+
+        # accumulate per-position and global sums
+        # (loop is fine; 6936 total)
+        for i in range(bs):
+            p = pos_idx[i]
+            lam_i_sum[p] += out[i]
+            lam_c_sum += out[i]
+
+    # average over rotations for lam_i, and over all samples for lambda_c
+    lam_i = (lam_i_sum / float(n_rotations)).astype(np.float32)                 # (289, C)
+    lambda_c = (lam_c_sum / float(image_samples)).astype(np.float32)       # (C,)
+
+    # save small cache
+    np.savez_compressed(cache_path, lam_i=lam_i, lambda_c=lambda_c)
+    print(f"[Cache] Saved small Skaggs cache: {cache_path} (lam_i {lam_i.shape}, lambda_c {lambda_c.shape})")
+    return lam_i, lambda_c
+
+
 def check_data_present(data_path, arena_size=(17,17)):
     if not os.path.exists(data_path):
         return False
@@ -56,143 +107,56 @@ def occupancy_probability(data_path, movement_type='uniform', arena_size=(17,17)
     else:
         raise ValueError(f"Unsupported movement_type='{movement_type}' in occupancy_probability().")
 
-def mean_firing_rate(block, model_reps_flat):
-    """Returns mean firing rate per channel across all spatial positions and rotations."""
-    if block is None:
-        raise ValueError("Block cannot be None for mean firing rate calculation.")
-    if block == 'block2_pool':
-        reps_array = model_reps_flat.reshape(6936, 56, 56, 128)
-        return reps_array.mean(axis=(0,1,2))  # (128,)
-    if block == 'block4_pool':
-        reps_array = model_reps_flat.reshape(6936, 14, 14, 512)
-        return reps_array.mean(axis=(0,1,2))  # (512,)
-    if block == 'block5_pool':
-        reps_array = model_reps_flat.reshape(6936, 7, 7, 512)
-        return reps_array.mean(axis=(0,1,2))  # (512,)
-    if block == 'fc2':
-        reps_array = model_reps_flat.reshape(6936, 4096)
-        return reps_array.mean(axis=0)  # (4096,)
-
 def skaggs_list(block, config, model, preprocess_funcx, data_path):
     if block == None: 
         raise ValueError("Block cannot be None for Skaggs index calculation.")
     
-    if block == 'block2_pool':
-        if config["output_layer"] != block:
-            raise ValueError(f"Config output_layer={config['output_layer']} but block={block}. They must match.")
-        cache_name = f"{block}.npy"
-        cache_path = os.path.join(CACHE_DIR, cache_name)
-        if os.path.exists(cache_path):
-            print(f"[Cache] Loading reps from: {cache_path}")
-            reps_flat = np.load(cache_path)
-        else:
-            print("[Cache] No cached reps found. Running forward pass...")
-            reps_flat = data.load_full_dataset_model_reps(config, model, preprocess_funcx, batch_size=24)
-            np.save(cache_path, reps_flat)
-            print(f"[Cache] Saved reps to: {cache_path}")
+    BLOCK_SPECS = {
+        "block2_pool": (56, 56, 128),
+        "block4_pool": (14, 14, 512),
+        "block5_pool": (7, 7, 512),
+        "fc2": (None, None, 4096)
+    }
 
-        lambda_channel = mean_firing_rate(block, reps_flat)
-        occupancy = occupancy_probability(data_path, movement_type='uniform', arena_size=(17,17))
-        p = occupancy.reshape(-1)
-
-        unflattened_reps = reps_flat.reshape(6936, 56, 56, 128)  # reshape to (num_samples, height, width, channels)
-        GAP = unflattened_reps.mean(axis=(1,2))  # global average pooling to get (6936, 128)
-        A = GAP.reshape(289, 24, 128)  # now lambda_i is (289, 24, 128)
-        lam_i = A.mean(axis=1)  # average across rotations to get (289, 128) feature channel activations per spatial location (coordinate)
-        
-        skaggs_indeces = np.zeros(128, dtype=np.float32)
-        for c in range(128):
-            ratio = lam_i[:,c] / (lambda_channel[c] + 1e-10)  # add small constant to avoid division by zero
-            skaggs_unit = p * ratio * np.log2(ratio + 1e-10)  # add small constant to avoid log of zero
-            skaggs_indeces[c] = (np.sum(skaggs_unit))  # add small constant to avoid log of zero
-
-        return skaggs_indeces, lam_i.reshape(17, 17, 128)  # reshape back to spatial layout for heat maps
+    if config['output_layer'] != block:
+        raise ValueError(f"Config output_layer={config['output_layer']} but block={block}. They must match.")
     
-    if block == 'block4_pool':
-        cache_name = f"{block}_{config['model_name']}_{config['output_layer']}.npy"
-        cache_path = os.path.join(CACHE_DIR, cache_name)
-        if os.path.exists(cache_path):
-            print(f"[Cache] Loading reps from: {cache_path}")
-            reps_flat = np.load(cache_path)
-        else:
-            print("[Cache] No cached reps found. Running forward pass...")
-            reps_flat = data.load_full_dataset_model_reps(config, model, preprocess_funcx, batch_size=24)
-            np.save(cache_path, reps_flat)
-            print(f"[Cache] Saved reps to: {cache_path}")
-        
-        lambda_channel = mean_firing_rate(block, reps_flat)
+    cache_path = os.path.join(CACHE_DIR, f"{block}_lam_i.npz")
+    if os.path.exists(cache_path):
+        print(f"[Cache] Loading small cache: {cache_path}")
+        d = np.load(cache_path)
+        lam_i = d["lam_i"]
+        lambda_c = d["lambda_c"]
+    else:
+        print("[Cache] No small cache found. Building it with streaming forward pass...")
+        lam_i, lambda_c = cache_builder(
+            block=block,
+            config=config,
+            model=model,
+            preprocessed_data=preprocess_funcx,   # this is your full dataset array
+            data_path=cache_path,
+        )
+
         occupancy = occupancy_probability(data_path, movement_type='uniform', arena_size=(17,17))
         p = occupancy.reshape(-1)
 
-        unflattened_reps = reps_flat.reshape(6936, 14, 14, 512)  # reshape to (num_samples, height, width, channels)
-        GAP = unflattened_reps.mean(axis=(1,2))  # global average pooling to get (6936, 128)
-        A = GAP.reshape(289, 24, 512)  # now lambda_i is (289, 24, 128)
-        lam_i = A.mean(axis=1)  # average across rotations to get (289, 128) feature channel activations per spatial location (coordinate)
-        
-        skaggs_indeces = np.zeros(512, dtype=np.float32)
-        for c in range(512):
-            ratio = lam_i[:,c] / (lambda_channel[c] + 1e-10)  # add small constant to avoid division by zero
-            skaggs_unit = p * ratio * np.log2(ratio + 1e-10)  # add small constant to avoid log of zero
-            skaggs_indeces[c] = (np.sum(skaggs_unit))  # add small constant to avoid log of zero
+        eps = 1e-10
+        ratio = lam_i / (lambda_c[None, :] + eps)     # (289, C)
+        skaggs = np.sum(p[:, None] * ratio * np.log2(ratio + eps), axis=0).astype(np.float32)  # (C,)
 
-        return skaggs_indeces, lam_i.reshape(17, 17, 512)  # reshape back to spatial layout for heat maps
+        if block == 'block2_pool':
+            _, _, C = BLOCK_SPECS[block]
+            return skaggs, lam_i.reshape(17, 17, C)  # reshape back to spatial layout for heat maps
+        if block == 'block4_pool':
+            _, _, C = BLOCK_SPECS[block]
+            return skaggs, lam_i.reshape(17, 17, C)  # reshape back to spatial layout for heat maps
+        if block == 'block5_pool':
+            _, _, C = BLOCK_SPECS[block]
+            return skaggs, lam_i.reshape(17, 17, C)  # reshape back to spatial layout for heat maps
+        if block == 'fc2':
+            _, _, C = BLOCK_SPECS[block]
+            return skaggs, lam_i.reshape(17, 17, C)  # reshape back to spatial layout for heat maps
     
-    if block == 'block5_pool':
-        cache_name = f"{block}_{config['model_name']}_{config['output_layer']}.npy"
-        cache_path = os.path.join(CACHE_DIR, cache_name)
-        if os.path.exists(cache_path):
-            print(f"[Cache] Loading reps from: {cache_path}")
-            reps_flat = np.load(cache_path)
-        else:
-            print("[Cache] No cached reps found. Running forward pass...")
-            reps_flat = data.load_full_dataset_model_reps(config, model, preprocess_funcx, batch_size=24)
-            np.save(cache_path, reps_flat)
-            print(f"[Cache] Saved reps to: {cache_path}")
-        
-        lambda_channel = mean_firing_rate(block, reps_flat)
-        occupancy = occupancy_probability(data_path, movement_type='uniform', arena_size=(17,17))
-        p = occupancy.reshape(-1)
-
-        unflattened_reps = reps_flat.reshape(6936, 7, 7, 512)  # reshape to (num_samples, height, width, channels)
-        GAP = unflattened_reps.mean(axis=(1,2))  # global average pooling to get (6936, 128)
-        A = GAP.reshape(289, 24, 512)  # now lambda_i is (289, 24, 128)
-        lam_i = A.mean(axis=1)  # average across rotations to get (289, 128) feature channel activations per spatial location (coordinate)
-        
-        skaggs_indeces = np.zeros(512, dtype=np.float32)
-        for c in range(512):
-            ratio = lam_i[:,c] / (lambda_channel[c] + 1e-10)  # add small constant to avoid division by zero
-            skaggs_unit = p * ratio * np.log2(ratio + 1e-10)  # add small constant to avoid log of zero
-            skaggs_indeces[c] = (np.sum(skaggs_unit))  # add small constant to avoid log of zero
-
-        return skaggs_indeces, lam_i.reshape(17, 17, 512)  # reshape back to spatial layout for heat maps
-    
-    if block == 'fc2':
-        cache_name = f"{block}_{config['model_name']}_{config['output_layer']}.npy"
-        cache_path = os.path.join(CACHE_DIR, cache_name)
-        if os.path.exists(cache_path):
-            print(f"[Cache] Loading reps from: {cache_path}")
-            reps_flat = np.load(cache_path)
-        else:
-            print("[Cache] No cached reps found. Running forward pass...")
-            reps_flat = data.load_full_dataset_model_reps(config, model, preprocess_funcx, batch_size=24)
-            np.save(cache_path, reps_flat)
-            print(f"[Cache] Saved reps to: {cache_path}")
-        
-        lambda_channel = mean_firing_rate(block, reps_flat)
-        occupancy = occupancy_probability(data_path, movement_type='uniform', arena_size=(17,17))
-        p = occupancy.reshape(-1)
-
-        unflattened_reps = reps_flat.reshape(6936, 4096)  # reshape to (num_samples, height, width, channels)
-        A = GAP.reshape(289, 24, 4096)  # now lambda_i is (289, 24, 128)
-        lam_i = A.mean(axis=1)  # average across rotations to get (289, 128) feature channel activations per spatial location (coordinate)
-        
-        skaggs_indeces = np.zeros(4096, dtype=np.float32)
-        for c in range(4096):
-            ratio = lam_i[:,c] / (lambda_channel[c] + 1e-10)  # add small constant to avoid division by zero
-            skaggs_unit = p * ratio * np.log2(ratio + 1e-10)  # add small constant to avoid log of zero
-            skaggs_indeces[c] = np.sum(skaggs_unit)  # add small constant to avoid log of zero
-
-        return skaggs_indeces, lam_i.reshape(17, 17, 4096)  # reshape back to spatial layout for heat maps
 
 def build_place_fields():
     pass
@@ -233,6 +197,3 @@ if __name__ == "__main__":
     logging.info("Skaggs analysis completed.")
     occ = occupancy_probability(args.data_path, movement_type='uniform', arena_size=(17,17))
     skaggs_index, skaggs_map = skaggs_list('block2_pool',config, model, preprocess_funcx, args.data_path)
-
-    #print("Skaggs indeces:", skaggs_index)
-    #print('Skaggs map shape:', skaggs_map)
