@@ -7,6 +7,7 @@ import tensorflow as tf
 from tensorflow.keras import backend as K
 import logging
 import argparse
+from scipy.ndimage import gaussian_filter
 
 import data
 import utils
@@ -68,17 +69,17 @@ def cache_builder(block, model, preprocessed_data, n_positions=289):
         # out is now (bs, C)
         bs = out.shape[0]
         idx = np.arange(start, start + bs)
-        pos_idx = idx // n_rotations   # 0..288
+        pos_idx = idx // n_rotations   # 00000 to 06935, where each position index is repeated 24 times for 24 rotations since that is how the Unity images are organized (all 24 rotations of position 0, then all 24 rotations of position 1, etc.)
 
-        lam_c_sum += out.sum(axis=0)
+        lam_c_sum += out.sum(axis=0) # sum channel activations across all images in batch for lambda_c
 
         for i in range(bs):
             p = pos_idx[i]
-            lam_i_sum[p] += out[i]
+            lam_i_sum[p] += out[i] # add all activations for position p across all rotations
 
     # average over rotations for lam_i, and over all samples for lambda_c
     lam_i = (lam_i_sum / float(n_rotations)).astype(np.float32) # (289, C)
-    lambda_c = (lam_c_sum / float(image_samples)).astype(np.float32) # (C,)
+    lambda_c = (lam_c_sum / float(image_samples)).astype(np.float32) # (C,), average lambda_c across all total images
 
     # save small cache
     np.savez_compressed(cache_path, lam_i=lam_i, lambda_c=lambda_c)
@@ -137,36 +138,44 @@ def skaggs_list(block, config, model, preprocess_funcx, data_path):
             preprocessed_data=preprocess_funcx,
         )
 
+    lam_i_smoothed = np.zeros_like(lam_i)
+
+    for c in range(lam_i.shape[1]):
+        field = lam_i[:, c].reshape(17,17) # unlfatten to 17x17 spatial map for each unit C. 
+        field = gaussian_filter(field, sigma=1) # smooth via Gauss' equation
+        lam_i_smoothed[:, c] = field.reshape(-1) # flatten back to (289, C) for Skaggs calculation
+
+    lam_i = lam_i_smoothed
+
     occupancy = occupancy_probability(data_path, movement_type='uniform', arena_size=(17,17))
     p = occupancy.reshape(-1)
 
     eps = 1e-10
-    ratio = lam_i / (lambda_c[None, :] + eps)     # (289, C)
+    ratio = lam_i / (lambda_c[None, :] + eps)
     skaggs = np.sum(p[:, None] * ratio * np.log2(ratio + eps), axis=0).astype(np.float32)  # (C,)
 
-    C = BLOCK_SPECS[block][2]
     return skaggs, lam_i 
     
-def find_top_k_skaggs_units_and_indexes(skaggs, k=10):
+def find_top_k_skaggs_indexes(skaggs, k=10):
     top_k_indexes = np.argsort(skaggs)[::-1][:k]
     return top_k_indexes
 
 def build_place_fields(config, model, preprocess_func, data_path, arena_size=(17,17), k=10):
     block = config['output_layer']
     skaggs, lambda_i = skaggs_list(block=block, config=config, model=model, preprocess_funcx=preprocess_func, data_path=data_path)
-    top_k_skaggs_units = find_top_k_skaggs_units_and_indexes(skaggs, k=k)
+    top_k_skaggs_units = find_top_k_skaggs_indexes(skaggs, k=k)
 
     cols = 5 
     rows = int(np.ceil(k / cols))
-    fig, axes = plt.subplots(rows, cols, figsize=(cols*4, rows*4))
+    fig, axes = plt.subplots(rows, cols, figsize=(cols*4, rows*4)) # creates figure with subplots in 5x2 shape (for top 10 units), with each subplot being 4x4 inches in size. Adjust cols and rows as needed for different k values.
     axes = np.array(axes).reshape(-1)
 
     for ax_i, unit in enumerate(top_k_skaggs_units):
         ax = axes[ax_i]
         heatmap = lambda_i[:, unit].reshape(arena_size)
-        heatmap = (heatmap - heatmap.min()) / (heatmap.max() - heatmap.min() + 1e-12)
+        heatmap = gaussian_filter(heatmap, sigma=1) # apply Gaussian smoothing to the place field for better visualization and so spatial info isn't concentrated and is distributed across neighboring spatial locations, which is more consistent with how place fields are observed in biological neurons. This also helps prevent a single spike in spatial activity from dominating the visualization and allows us to see the overall spatial knowledge of the unit more clearly.
+        sb.heatmap(np.log1p(heatmap), ax=ax, cbar=False) # use log scale for better visualization, so large spike in spatial activity doesn't overwhelm neighboring spikes in spatial knowledge
 
-        sb.heatmap(heatmap, ax=ax, cbar=False, vmin=0, vmax=1)
         ax.invert_yaxis()  
         ax.set_title(f"Unit {unit} | Skaggs={skaggs[unit]:.8g}")
 
