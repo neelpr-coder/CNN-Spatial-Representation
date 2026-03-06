@@ -78,7 +78,7 @@ def cache_builder(block, model, preprocessed_data, n_positions=289):
             lam_i_sum[p] += out[i] # add all activations for position p across all rotations
 
     # average over rotations for lam_i, and over all samples for lambda_c
-    lam_i = (lam_i_sum / float(n_rotations)).astype(np.float32) # (289, C)
+    lam_i = (lam_i_sum / float(n_rotations)).astype(np.float32) # (289, C), finds average activation for each spatial bin (position)
     lambda_c = (lam_c_sum / float(image_samples)).astype(np.float32) # (C,), average lambda_c across all total images
 
     # save small cache
@@ -183,6 +183,7 @@ def build_place_fields(config, model, preprocess_func, data_path, arena_size=(17
     for j in range(len(top_k_skaggs_units), len(axes)):
         axes[j].axis("off")
 
+    #fig.colorbar(im, ax=axes.ravel().tolist())
     fig.suptitle(f"Top {k} place fields in {block} (λ maps)", y=1.02)
     plt.tight_layout()
 
